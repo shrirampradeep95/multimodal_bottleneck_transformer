@@ -1,0 +1,18 @@
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+timm>=0.6.13
+einops>=0.6.0
+opencv-python>=4.7.0
+scikit-learn>=1.1.0
+Pillow>=9.0.0
+matplotlib>=3.5.0
+pandas
+numpy
+scipy
+pip uninstall numpy -y
+pip install "numpy<2.0.0" --force-reinstall
+
+# Optional: Reinstall PyTorch and Pandas to rebuild extensions with compatible NumPy
+pip install --force-reinstall torch pandas scipy scikit-learn
+
