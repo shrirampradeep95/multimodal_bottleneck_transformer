@@ -19,4 +19,4 @@ secrets.json
 
 # Ignore folders or files
 multimodal_bottleneck_transformer/data/
-multimodal_bottleneck_transformer/utils/model
+multimodal_bottleneck_transformer/utils/model/ast
