@@ -2,74 +2,76 @@
 import torch
 import torch.nn as nn
 import timm
-from einops import rearrange
 
 
-class ViTEncoder(nn.Module):
-    """
-    Vision Transformer (ViT) Encoder for extracting patch-level embeddings from video frames.
+class VideoEncoder(nn.Module):
+    def __init__(self):
+        """
+        Initializes the video encoder using a Vision Transformer backbone.
+        This encoder is designed to process RGB video frames and convert them into token sequences.
+        """
+        super(VideoEncoder, self).__init__()
 
-    This class wraps a pretrained ViT and processes sequences of video frames.
-    It extracts token embeddings for each frame using patch embedding and transformer layers.
+        # Create a ViT model pretrained on ImageNet21k
+        self.v2 = timm.create_model('vit_base_patch16_224_in21k', pretrained=True)
 
-    Args:
-        model_name (str): Name of the ViT model from the `timm` library. Default is 'vit_base_patch16_224'.
-        pretrained (bool): Whether to load ImageNet-21K pretrained weights. Default is True.
+        # Remove classification layers to retain feature embeddings only
+        self.v2.pre_logits = nn.Identity()
+        self.v2.head = nn.Identity()
 
-    Input:
-        x (torch.Tensor): A tensor of shape (B, T, 3, 224, 224) representing a batch of B video clips,
-                          each with T RGB frames resized to 224×224.
+        # Freeze most of the model's parameters to use it as a feature extractor
+        self.v2.pos_embed.requires_grad = False
+        for p in self.v2.patch_embed.proj.parameters():
+            p.requires_grad = False
+        for p in self.v2.blocks.parameters():
+            p.requires_grad = False
 
-    Output:
-        torch.Tensor: A tensor of shape (B, T, N, D), where:
-            - B is the batch size
-            - T is the number of frames
-            - N is the number of tokens per frame (including [CLS] if present)
-            - D is the embedding dimension (typically 768 for ViT-Base)
-    """
-    def __init__(self, model_name='vit_base_patch16_224', pretrained=True):
-        super().__init__()
-        # Load the full ViT model from timm
-        self.vit = timm.create_model(model_name, pretrained=pretrained)
+        # Save important components for use in forward pass
+        self.rgb_conv = self.v2.patch_embed.proj
+        self.rgb_pos_embed = self.v2.pos_embed
+        self.rgb_cls_token = self.v2.cls_token
 
-        # Extract the essential components of ViT
-        # Converts 2D frame to patch tokens
-        self.patch_embed = self.vit.patch_embed
-        # Learnable [CLS] token
-        self.cls_token = self.vit.cls_token
-        # Positional embeddings
-        self.pos_embed = self.vit.pos_embed
-        # Transformer encoder layers
-        self.blocks = self.vit.blocks
-        # Final layer normalization
-        self.norm = self.vit.norm
+    def forward_features(self, x):
+        """
+        Processes a batch of RGB video frames and returns token representations.
 
-    def forward(self, x):
-        # x shape: (B, T, 3, 224, 224)
-        B, T, C, H, W = x.shape
+        Args:
+            x: A 5D input tensor of shape (B, num_frames, 3, H, W), where:
+                - B is the batch size
+                - num_frames is the number of frames per video
+                - 3 is the RGB channels
+                - H, W are the height and width of the frames
 
-        # Flatten time dimension into batch: (B*T, 3, 224, 224)
-        x = rearrange(x, 'b t c h w -> (b t) c h w')
+        Returns:
+            Tensor: Output token sequence of shape
+        """
+        B, num_frames, C, H, W = x.shape
 
-        # Apply patch embedding: (B*T, N_patches, D)
-        x = self.patch_embed(x)
+        # Merge the batch and frame dimensions to treat each frame as an individual image
+        x = x.reshape(B * num_frames, C, H, W)
 
-        # Expand [CLS] token to match batch size and prepend
-        # (B*T, 1, D)
-        cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
-        # (B*T, 1 + N_patches, D)
-        x = torch.cat((cls_tokens, x), dim=1)
+        # Apply patch embedding via convolution
+        x = self.rgb_conv(x)
+        _, dim, h, w = x.shape
 
-        # Add positional embeddings
-        x = x + self.pos_embed[:, :x.size(1)]
+        # Reshape back to include frame dimension
+        x = x.reshape(B, num_frames, dim, h, w)
 
-        # Pass through transformer encoder blocks
-        for blk in self.blocks:
-            x = blk(x)
+        # Move channel dimension to the front
+        x = x.permute(0, 2, 1, 3, 4)
 
-        # Apply final layer normalization
-        x = self.norm(x)
+        # Flatten spatial and temporal dimensions into a token sequence
+        x = x.reshape(B, dim, num_frames * h * w)
+        x = x.permute(0, 2, 1)
 
-        # Reshape back to (B, T, N, D)
-        x = rearrange(x, '(b t) n d -> b (t n) d', b=B, t=T)
+        # Prepend a learned classification (CLS) token
+        cls_token = self.rgb_cls_token.expand(B, -1, -1)
+        x = torch.cat((cls_token, x), dim=1)
+
+        # Interpolate and add positional embeddings to the tokens
+        pos_embed = nn.functional.interpolate(
+            self.rgb_pos_embed.permute(0, 2, 1), x.shape[1], mode='linear'
+        ).permute(0, 2, 1)
+        x = x + pos_embed
+
         return x

@@ -3,70 +3,105 @@ import torch
 import torch.nn as nn
 
 
-class BottleneckFusion(nn.Module):
-    """
-    BottleneckFusion performs attention-based fusion of two modalities
-    (e.g., vision and audio tokens) via a shared set of bottleneck tokens.
+class BottleneckEncoder(nn.Module):
+    def __init__(self, num_bottlenecks, spec_enc, rgb_enc, fusion_start_layer=8):
+        """
+        Initializes the Bottleneck Encoder that fuses audio and visual token representations
+        using learnable latent tokens as a bottleneck for cross-modal interaction.
+        """
+        super(BottleneckEncoder, self).__init__()
 
-    This module follows the architecture proposed in the "Attention Bottlenecks
-    for Multimodal Fusion" paper, where bottleneck tokens allow for controlled
-    information exchange between modalities.
+        # Audio modality transformer components
+        self.spec_norm1 = spec_enc.norm1
+        self.spec_attn = spec_enc.attn
+        self.spec_norm2 = spec_enc.norm2
+        self.spec_mlp = spec_enc.mlp
 
-    Args:
-        d_model (int): Dimensionality of input and bottleneck tokens (default: 768)
-        n_bottlenecks (int): Number of bottleneck tokens to insert (default: 4)
-        n_heads (int): Number of attention heads in each Transformer layer (default: 12)
-        depth (int): Number of TransformerEncoderLayer blocks (default: 2)
+        # Visual modality transformer components
+        self.rgb_norm1 = rgb_enc.norm1
+        self.rgb_attn = rgb_enc.attn
+        self.rgb_norm2 = rgb_enc.norm2
+        self.rgb_mlp = rgb_enc.mlp
 
-    Input:
-        vision_tokens (Tensor): Shape (B, N1, D) - token embeddings from vision modality
-        audio_tokens  (Tensor): Shape (B, N2, D) - token embeddings from audio modality
+        # Cross-modal latent bottleneck tokens
+        self.num_latents = num_bottlenecks
+        self.latents = nn.Parameter(torch.empty(1, num_bottlenecks, 768).normal_(std=0.02))
 
-    Output:
-        fused_tokens  (Tensor): Shape (B, N1 + N2 + n_bottlenecks, D) - fused representation
-    """
+        # Learnable scaling parameters for controlling fusion strength
+        self.scale_a = nn.Parameter(torch.zeros(1))
+        self.scale_v = nn.Parameter(torch.zeros(1))
 
-    def __init__(self, d_model=768, n_bottlenecks=4, n_heads=12, depth=2):
-        super().__init__()
+        # Fusion is only applied from this layer onward
+        self.fusion_start_layer = fusion_start_layer
 
-        # Learnable bottleneck tokens (shared across all samples)
-        self.bottlenecks = nn.Parameter(torch.randn(1, n_bottlenecks, d_model) * 0.02)
+    @staticmethod
+    def attention(q, k, v):
+        """
+        Computes scaled dot-product attention.
+        Args:
+            q: Query tensor of shape (B, N_q, C)
+            k: Key tensor of shape (B, N_k, C)
+            v: Value tensor of shape (B, N_k, C)
 
-        # Stack of TransformerEncoderLayers for fusion
-        self.layers = nn.ModuleList([
-            nn.TransformerEncoderLayer(
-                d_model=d_model,
-                nhead=n_heads,
-                dim_feedforward=4 * d_model,
-                dropout=0.1,
-                batch_first=True
-            ) for _ in range(depth)
-        ])
+        Returns:
+            Tensor: Attention output of shape (B, N_q, C)
+        """
+        B, N, C = q.shape
+        scale = C ** -0.5
+        attn = (q @ k.transpose(-2, -1)) * scale
+        attn = attn.softmax(dim=-1)
+        out = attn @ v
+        return out.reshape(B, N, C)
 
-    def forward(self, vision_tokens, audio_tokens):
-        B = vision_tokens.size(0)  # Batch size
-        V, A = vision_tokens, audio_tokens
+    def fusion(self, audio_tokens, visual_tokens):
+        """
+        Performs cross-modal fusion using latent bottleneck tokens in two stages:
+        1. Computes temporary bottleneck tokens from each modality via cross-attention.
+        2. Averages them to produce shared fusion tokens, then updates each modality.
+        Args:
+            audio_tokens: Audio tokens of shape (B, N_audio, 768)
+            visual_tokens: Visual tokens of shape (B, N_visual, 768)
+        Returns:
+            Tuple: Updated audio and visual tokens.
+        """
+        BS = audio_tokens.shape[0]
 
-        # Repeat bottlenecks for each sample in the batch
-        B_tokens = self.bottlenecks.expand(B, -1, -1)  # (B, Bn, D)
+        # Expand the latent tokens for each sample in the batch
+        bottleneck_tokens = self.latents.expand(BS, -1, -1)
 
-        # Concatenate V + B + A along token dimension
-        x = torch.cat([V, B_tokens, A], dim=1)  # (B, N1 + Bn + N2, D)
+        # Stage 1: Generate temporary bottleneck tokens from each modality
+        temp_bottleneck_audio = self.attention(q=bottleneck_tokens, k=audio_tokens, v=audio_tokens)
+        temp_bottleneck_visual = self.attention(q=bottleneck_tokens, k=visual_tokens, v=visual_tokens)
 
-        # Create attention mask to prevent bottlenecks from attending to each other
-        seq_len = x.size(1)
-        Bn = B_tokens.size(1)
-        N1 = V.size(1)
+        # Stage 2: Average both bottlenecks to create the fused bottleneck
+        fusion_tokens = (temp_bottleneck_audio + temp_bottleneck_visual) / 2.0
 
-        attn_mask = torch.zeros((seq_len, seq_len), device=x.device)  # (S, S)
-        b_start = N1
-        b_end = N1 + Bn
+        # Use fusion tokens to update each modality using cross-attention (with scaling)
+        audio_tokens = audio_tokens + self.scale_a * self.attention(q=audio_tokens, k=fusion_tokens, v=fusion_tokens)
+        visual_tokens = visual_tokens + self.scale_v * self.attention(q=visual_tokens, k=fusion_tokens, v=fusion_tokens)
 
-        # Block bottleneck-to-bottleneck attention
-        attn_mask[b_start:b_end, b_start:b_end] = float('-inf')
+        return audio_tokens, visual_tokens
 
-        # Pass through transformer layers
-        for layer in self.layers:
-            x = layer(x, src_mask=attn_mask)
+    def forward(self, x, y, layer_idx):
+        """
+        Applies bottleneck fusion and transformer block updates.
+        Args:
+            x: Audio tokens of shape (B, N_audio, 768)
+            y: Visual tokens of shape (B, N_visual, 768)
+            layer_idx: Current transformer layer index.
+        Returns:
+            Tuple: Updated audio and visual token embeddings.
+        """
+        # Perform fusion only if this layer is after fusion start layer
+        if layer_idx >= self.fusion_start_layer:
+            x, y = self.fusion(x, y)
 
-        return x
+        # Apply self-attention with residual connection
+        x = x + self.spec_attn(self.spec_norm1(x))
+        y = y + self.rgb_attn(self.rgb_norm1(y))
+
+        # Apply MLP with residual connection
+        x = x + self.spec_mlp(self.spec_norm2(x))
+        y = y + self.rgb_mlp(self.rgb_norm2(y))
+
+        return x, y

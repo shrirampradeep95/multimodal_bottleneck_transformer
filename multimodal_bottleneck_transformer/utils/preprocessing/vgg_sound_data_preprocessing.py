@@ -1,45 +1,52 @@
 # Import relevant libraries
 import pandas as pd
-import os
 
 
 class FormatVGGSoundData:
+    """
+    Formatter class for the VGGSound dataset, where all video clips are in one directory
+    and annotations contain a single label per clip.
+    """
     def __init__(self, parameters, data_type):
         """
-        Format handler for VGGSound dataset with all videos in one folder and single-label annotations.
+        Initialize formatter for VGGSound dataset.
 
         Args:
-            parameters (dict): Configuration dict with paths.
-            data_type (str): 'train' or 'test'
+            parameters: Configuration dictionary
+            data_type: Either 'train' or 'test' to determine split.
         """
         self.data_type = data_type
         self.label_path = parameters['vgg_sound_paths']['label_file']
         self.video_path = parameters['vgg_sound_paths']['video_dir']
+
         self.label_dict = None
         self.class_labels_df = None
         self.all_label_df = None
 
     def _parse_vggsound_csv(self):
         """
-        Parses the vggsound.csv file without headers.
-        Assumes columns: YTID, start_seconds, label, train_test
-        Filters rows by self.data_type.
-        Constructs key as YTID_start_seconds.mp4
+        Parses the VGGSound CSV file. The CSV contains no headers by default. This method filters the CSV
+        based on the data_type ('train' or 'test') and constructs a new 'key' column used for mapping to filenames.
         """
         df = pd.read_csv(self.label_path, header=None)
         df.columns = ["YTID", "start_seconds", "label", "train_test"]
 
-        # Filter by train or test split
         self.all_label_df = df.copy()
+
+        # Filter DataFrame for current split
         self.class_labels_df = df[df["train_test"] == self.data_type].copy()
         self.class_labels_df.reset_index(drop=True, inplace=True)
 
-        # Format start_seconds as integer with 3 digits and append .000 for filename
-        self.class_labels_df["key"] = df.apply(lambda row: f"{row['YTID']}_{int(row['start_seconds'])}", axis=1)
+        # Create a filename key: "<YTID>_<start_seconds>"
+        self.class_labels_df["key"] = self.class_labels_df.apply(
+            lambda row: f"{row['YTID']}_{int(row['start_seconds'])}", axis=1
+        )
 
     def _create_label_dict(self):
         """
-        Create a dictionary: filename -> [label]
+        Create a label dictionary where keys are "<YTID>_<start_seconds>" and values are single-label lists.
+        Returns:
+            dict: {"video_filename": [label]}
         """
         label_dict = {}
         for _, row in self.class_labels_df.iterrows():
@@ -48,10 +55,10 @@ class FormatVGGSoundData:
 
     def map_labels(self):
         """
-        Loads and maps VGGSound labels into a dict for DataLoader.
+        Parses the VGGSound label CSV and returns a mapping from video filenames to labels.
         Returns:
-            video_dir (str): Path to video files
-            label_dict (dict): Mapping of filename -> [label]
+            str: Path to the directory containing all video files.
+            dict: Mapping from filename key to a list with a single label.
         """
         self._parse_vggsound_csv()
         self.label_dict = self._create_label_dict()

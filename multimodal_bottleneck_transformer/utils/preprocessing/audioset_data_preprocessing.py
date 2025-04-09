@@ -3,9 +3,19 @@ import pandas as pd
 
 
 class FormatAudioSetData:
+    """
+    A utility class to process and format AudioSet metadata for training or testing.
+    This class reads the label mapping file and the segment files and constructs a dictionary mapping
+    video segments to their corresponding human-readable labels.
+    """
+
     def __init__(self, parameters, data_type):
         """
-        Initialize class parameters
+        Initialize the data formatter for AudioSet.
+
+        Args:
+            parameters: Dictionary containing paths to data files.
+            data_type: Either 'train' or 'test', to load corresponding segment files.
         """
         self.data_type = data_type
         if self.data_type == 'train':
@@ -16,6 +26,7 @@ class FormatAudioSetData:
             self.label_path = parameters['audio_set_paths']['test_label_path']
 
         self.class_label_mapping = parameters['audio_set_paths']['class_label_mapping']
+
         self.class_labels_df = None
         self.valid_mids = None
         self.label_dict = None
@@ -23,7 +34,7 @@ class FormatAudioSetData:
 
     def load_class_labels(self):
         """
-        Load the AudioSet class label mapping (mid -> display_name)
+        Load the AudioSet class label mapping. Also sets the valid MIDs set for downstream filtering.
         """
         self.class_labels_df = pd.read_csv(self.class_label_mapping)
         self.all_label_df = self.class_labels_df.copy()
@@ -32,7 +43,11 @@ class FormatAudioSetData:
     @staticmethod
     def _parse_segments_file(path):
         """
-        Parse an AudioSet segments file robustly and return a DataFrame
+        Parse an AudioSet segment CSV file.
+        Args:
+            path: Path to the segment file.
+        Returns:
+            pd.DataFrame: Labels dataframe
         """
         rows = []
         with open(path, "r") as f:
@@ -50,47 +65,40 @@ class FormatAudioSetData:
                     ))
         return pd.DataFrame(rows, columns=["YTID", "start_seconds", "end_seconds", "positive_labels"])
 
-    def _map_labels_to_mids(self, label_str):
-        """
-        Convert comma-separated string of mids to a list of valid mids
-        """
-        return [label.strip() for label in label_str.split(',') if label.strip() in self.valid_mids]
-
     def _create_label_dict(self, df):
         """
-        Create label dictionary from a DataFrame of AudioSet segments.
-        Dictionary values contain only display names of the labels.
+        Construct a dictionary mapping video segments to display names of valid labels.
+        Args:
+            df: Parsed segments DataFrame.
+        Returns:
+            dict: Mapping from "<YTID>_<start>.000" to list of label names.
         """
+        # Create a mapping from MID to display name
         mid_to_name = dict(zip(self.class_labels_df['mid'], self.class_labels_df['display_name']))
 
         def label_names(label_str):
-            mids = [mid.strip() for mid in label_str.split(',') if mid.strip() in self.valid_mids]
+            mids = [label.strip() for label in label_str.split(',') if label.strip() in self.valid_mids]
             return [mid_to_name[mid] for mid in mids]
 
+        # Add human-readable label names to the DataFrame
         df['label_names'] = df['positive_labels'].apply(label_names)
 
+        # Construct the dictionary
         return {
-            f"{row['YTID']}_ {int(row['start_seconds'])}.000": row['label_names']
+            f"{row['YTID']}_{int(row['start_seconds'])}.000": row['label_names']
             for _, row in df.iterrows()
         }
 
     def map_labels(self):
         """
-        Map training and testing labels to dictionaries
+        Main method to load label mappings and return video path and segment-to-label dictionary.
+
+        Returns:
+            tuple:
+                str: Path to the video features.
+                dict: Dictionary mapping "<YTID>_<start>.000" to list of label display names.
         """
         self.load_class_labels()
-
-        # Parse segment files
-        if self.data_type == 'train':
-            label_data = self._parse_segments_file(self.label_path)
-
-            # Create label dictionaries
-            self.label_dict = self._create_label_dict(label_data)
-        else:
-            label_data = self._parse_segments_file(self.label_path)
-
-            # Create label dictionaries
-            self.label_dict = self._create_label_dict(label_data)
-
+        label_data = self._parse_segments_file(self.label_path)
+        self.label_dict = self._create_label_dict(label_data)
         return self.video_path, self.label_dict
-

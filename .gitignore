@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 *.idea
 
+# Other files
+multimodal_bottleneck_transformer/audioset_16_16_0.4422.pth
+
 # Ignore virtual environments
 venv/
 env/
