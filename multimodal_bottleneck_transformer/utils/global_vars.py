@@ -7,7 +7,7 @@ parameters = {
     "dataset": "AudioSet",  # Dataset to use: "AudioSet" or "vggsound"
     "modality": "av",  # Modality type: "av" for audiovisual, "a" for audio-only, "v" for video-only
     "fps": 25,  # FPS and duration control for frame sampling and audio slicing
-    "t_seconds": 1,  # FPS and duration control for frame sampling and audio slicing
+    "t_seconds": 8,  # FPS and duration control for frame sampling and audio slicing
     "num_frames": 8,  # FPS and duration control for frame sampling and audio slicing
     "num_bottlenecks": 4,  # Number of bottleneck tokens used in fusion transformer
     "transformer_layers": 12,  # Number of transformer layers in the model
@@ -21,22 +21,19 @@ parameters = {
     "videos_to_use": None,
 
     # AudioSet-specific paths
-    "audio_set_paths": {
-        "train_video_path": "data/audioset/balanced_train_segments",
-        "test_video_path": "data/audioset/eval_segments",
-        "train_label_path": "data/audioset/balanced_train_segments.csv",
-        "test_label_path": "data/audioset/eval_segments.csv",
-        "class_label_mapping": "data/audioset/class_labels_indices.csv"
+    "AudioSet": {
+        "video_dir": "data/audioset/audioset_videos",
+        "metadata_file": "data/audioset/audioset_combined_metadata.csv"
     },
 
     # VGGSound-specific paths
-    "vgg_sound_paths": {
+    "vggsound": {
         "video_dir": "data/vggsound/vggsound_videos",
-        "label_file": "data/vggsound/vggsound.csv",
+        "metadata_file": "data/vggsound/vggsound_combined_metadata.csv",
     },
 
     # Epic Kitchens dataset
-    "epic_kitchens_paths": {
+    "epic_kitchens": {
         "train_video_path": "data/epic-kitchens100/epic_kitchen_videos",
         "test_video_path": "data/epic-kitchens100/epic_kitchen_videos",
         "train_label_path": "data/epic-kitchens100/EPIC_100_train.csv",

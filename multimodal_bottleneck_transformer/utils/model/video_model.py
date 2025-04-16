@@ -24,7 +24,7 @@ class VideoEncoder(nn.Module):
         for p in self.v2.patch_embed.proj.parameters():
             p.requires_grad = False
         for p in self.v2.blocks.parameters():
-            p.requires_grad = False
+            p.requires_grad = True
 
         # Save important components for use in forward pass
         self.rgb_conv = self.v2.patch_embed.proj

@@ -27,9 +27,9 @@ class BottleneckEncoder(nn.Module):
         self.num_latents = num_bottlenecks
         self.latents = nn.Parameter(torch.empty(1, num_bottlenecks, 768).normal_(std=0.02))
 
-        # Learnable scaling parameters for controlling fusion strength
-        self.scale_a = nn.Parameter(torch.zeros(1))
-        self.scale_v = nn.Parameter(torch.zeros(1))
+        # Learnable scaling parameters for controlling fusion strength - gating values
+        self.scale_a = nn.Parameter(torch.ones(1) * 0.1)
+        self.scale_v = nn.Parameter(torch.ones(1) * 0.1)
 
         # Fusion is only applied from this layer onward
         self.fusion_start_layer = fusion_start_layer
@@ -76,7 +76,7 @@ class BottleneckEncoder(nn.Module):
         # Stage 2: Average both bottlenecks to create the fused bottleneck
         fusion_tokens = (temp_bottleneck_audio + temp_bottleneck_visual) / 2.0
 
-        # Use fusion tokens to update each modality using cross-attention (with scaling)
+        # Use fusion tokens to update each modality using cross-attention
         audio_tokens = audio_tokens + self.scale_a * self.attention(q=audio_tokens, k=fusion_tokens, v=fusion_tokens)
         visual_tokens = visual_tokens + self.scale_v * self.attention(q=visual_tokens, k=fusion_tokens, v=fusion_tokens)
 
@@ -93,8 +93,8 @@ class BottleneckEncoder(nn.Module):
             Tuple: Updated audio and visual token embeddings.
         """
         # Perform fusion only if this layer is after fusion start layer
-        if layer_idx >= self.fusion_start_layer:
-            x, y = self.fusion(x, y)
+        # if layer_idx >= self.fusion_start_layer:
+        x, y = self.fusion(x, y)
 
         # Apply self-attention with residual connection
         x = x + self.spec_attn(self.spec_norm1(x))

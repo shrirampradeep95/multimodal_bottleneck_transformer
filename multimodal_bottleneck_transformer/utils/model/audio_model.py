@@ -65,7 +65,7 @@ class AudioEncoder(nn.Module):
         for p in self.v1.patch_embed.proj.parameters():
             p.requires_grad = False
         for p in self.v1.blocks.parameters():
-            p.requires_grad = False
+            p.requires_grad = True
 
         # Save components for later use in forward pass
         self.spec_conv = self.v1.patch_embed.proj

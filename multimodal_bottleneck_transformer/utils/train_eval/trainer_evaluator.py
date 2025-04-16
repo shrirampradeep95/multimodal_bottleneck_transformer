@@ -73,7 +73,12 @@ class TrainerEvaluator:
             self.optimizer.zero_grad()
 
             # Forward pass
-            logits = self.model(audio, video)
+            if self.parameters['modality'] == 'av':
+                logits = self.model(audio, video)
+            elif self.parameters['modality'] == 'v':
+                logits = self.model(video)
+            else:
+                logits = self.model(audio)
 
             # Compute loss based on dataset type
             if self.dataset == "vggsound":
@@ -109,7 +114,12 @@ class TrainerEvaluator:
             for video, audio, labels in loop:
                 video, audio, labels = video.to(self.device), audio.to(self.device), labels.to(self.device)
 
-                logits = self.model(audio, video)
+                if self.parameters['modality'] == 'av':
+                    logits = self.model(audio, video)
+                elif self.parameters['modality'] == 'v':
+                    logits = self.model(video)
+                else:
+                    logits = self.model(audio)
 
                 if self.dataset == "vggsound":
                     preds = torch.softmax(logits, dim=1)

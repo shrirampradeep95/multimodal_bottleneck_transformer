@@ -11,13 +11,13 @@ if __name__ == '__main__':
 
     # Initialise the parameters for the model
     parameters = parameters.copy()
-    parameters["dataset"] = "vggsound"  # 'AudioSet', 'vggsound'
-    parameters["videos_to_use"] = 10
+    parameters["dataset"] = "AudioSet"  # 'AudioSet', 'vggsound'
+    parameters["top_k_labels"] = 3
     parameters["modality"] = 'av'  # 'a', 'v', 'av'
-    parameters["epochs"] = 50
+    parameters["epochs"] = 2
     parameters["vgg_sound_lr"] = 0.01
     parameters["audio_set_lr"] = 1e-4
-    parameters["batch_size"] = 1
+    parameters["batch_size"] = 2
 
     # Initialise MBT runner model class
     runner = MBTRunnerClass(parameters)
