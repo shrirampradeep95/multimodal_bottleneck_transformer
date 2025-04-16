@@ -13,6 +13,7 @@ parameters = {
     "transformer_layers": 12,  # Number of transformer layers in the model
     "vgg_sound_lr": 0.01,  # Learning rates for specific dataset types
     "audio_set_lr": 1e-4,  # Learning rates for specific dataset types
+    "model_improved": False,
 
     # Training control
     "batch_size": 1,

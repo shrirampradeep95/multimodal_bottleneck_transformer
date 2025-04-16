@@ -82,7 +82,7 @@ class TrainerEvaluator:
 
             # Compute loss based on dataset type
             if self.dataset == "vggsound":
-                loss = self.criterion(logits, labels.argmax(dim=1))
+                loss = self.criterion(logits, labels)
             else:
                 loss = self.criterion(logits, labels)
 
@@ -123,7 +123,7 @@ class TrainerEvaluator:
 
                 if self.dataset == "vggsound":
                     preds = torch.softmax(logits, dim=1)
-                    all_targets.append(labels.argmax(dim=1).cpu())
+                    all_targets.append(labels)
                     all_outputs.append(preds.cpu())
                 else:
                     probs = torch.sigmoid(logits)
@@ -135,8 +135,17 @@ class TrainerEvaluator:
             y_true = torch.cat(all_targets)
             y_pred = torch.cat(all_outputs)
 
+            # Make sure y_true is on the same device as y_pred
+            y_true = y_true.to(y_pred.device)
+
+            # Top-1 accuracy
             top1 = (y_pred.argmax(dim=1) == y_true).float().mean().item()
-            top5 = sum([y_true[i] in y_pred[i].topk(5).indices for i in range(len(y_true))]) / len(y_true)
+
+            k = min(5, y_pred.shape[1])
+            top5 = sum([
+                y_true[i].item() in y_pred[i].topk(k).indices.tolist()
+                for i in range(len(y_true))
+            ]) / len(y_true)
 
             print(f"Validation Top-1 Acc: {top1:.4f}, Top-5 Acc: {top5:.4f}")
             return top1, top5

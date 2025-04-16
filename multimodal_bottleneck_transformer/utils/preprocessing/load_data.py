@@ -68,7 +68,8 @@ class AudioVisualDataset(Dataset):
     def _load_video(self, video_path):
         """
         Extract and sample frames from video using OpenCV.
-        Handles Epic-Kitchens and other datasets with dataset-specific sampling strategy.
+        Supports Epic-Kitchens and other datasets with sampling strategy.
+        If frames cannot be extracted, returns None.
         """
         cap = cv2.VideoCapture(video_path)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -81,62 +82,88 @@ class AudioVisualDataset(Dataset):
             self.num_frames = 8
             self.stride = int((self.t_seconds * video_fps) / self.num_frames)
 
-        required = self.num_frames * self.stride
-        if total_frames < required:
+        needed = self.num_frames * self.stride
+        if total_frames < needed:
             cap.release()
-            raise RuntimeError(f"Not enough frames in video: {video_path}")
+            return None
 
-        frame_indices = [0 + i * self.stride for i in range(self.num_frames)]
-        frames, current_frame = [], 0
+        frame_indices = [i * self.stride for i in range(self.num_frames)]
 
-        success = True
-        while success and len(frames) < self.num_frames:
+        frames = []
+        for idx in frame_indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             success, frame = cap.read()
             if not success:
-                break
-            if current_frame in frame_indices:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                pil_img = to_pil_image(frame_rgb)
-                frames.append(self.video_transform(pil_img))
-            current_frame += 1
+                continue
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_img = to_pil_image(frame_rgb)
+            frames.append(self.video_transform(pil_img))
 
         cap.release()
 
         if len(frames) != self.num_frames:
-            raise RuntimeError(f"Could not extract {self.num_frames} frames from {video_path}")
+            return None
 
-        return torch.stack(frames)  # [T, 3, 224, 224]
+        return torch.stack(frames)
 
     def _load_audio(self, video_file_path):
         """
         Extract mono-channel audio using ffmpeg, pad/trim to fixed length,
-        and convert to log-mel spectrogram.
+        and convert to log-mel spectrogram. Returns None if audio can't be processed.
         """
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp_wav:
-            command = ["ffmpeg", "-i", video_file_path, "-ac", "1", "-ar", str(self.sample_rate), "-vn", "-y", tmp_wav.name]
-            subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            waveform, sr = torchaudio.load(tmp_wav.name)
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp_wav:
+                command = [
+                    "ffmpeg", "-i", video_file_path,
+                    "-ac", "1", "-ar", str(self.sample_rate),
+                    "-vn", "-y", tmp_wav.name
+                ]
+                result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        if sr != self.sample_rate:
-            waveform = T.Resample(sr, self.sample_rate)(waveform)
+                if result.returncode != 0 or not os.path.exists(tmp_wav.name):
+                    return None
 
-        if waveform.shape[0] > 1:
-            waveform = waveform.mean(dim=0, keepdim=True)
+                # Additional check: is it empty?
+                if os.path.getsize(tmp_wav.name) == 0:
+                    return None
 
-        desired_len = self.sample_rate * self.t_seconds
-        waveform = torch.nn.functional.pad(waveform, (0, max(0, desired_len - waveform.size(1))))
-        waveform = waveform[:, :desired_len]
-        mel_spec = self.audio_transform(waveform)
-        return mel_spec  # [1, 128, T]
+                waveform, sr = torchaudio.load(tmp_wav.name)
+
+            if sr != self.sample_rate:
+                waveform = T.Resample(sr, self.sample_rate)(waveform)
+
+            if waveform.shape[0] > 1:
+                waveform = waveform.mean(dim=0, keepdim=True)
+
+            desired_len = self.sample_rate * self.t_seconds
+            waveform = torch.nn.functional.pad(waveform, (0, max(0, desired_len - waveform.size(1))))
+            waveform = waveform[:, :desired_len]
+            mel_spec = self.audio_transform(waveform)
+            return mel_spec  # [1, 128, T]
+        except Exception as e:
+            print(f"[AUDIO LOAD FAILED] {video_file_path}: {e}")
+            return None
 
     def __getitem__(self, idx):
+        """
+        Fetch video and audio tensors and corresponding labels for a given index.
+        If loading fails, return dummy tensors instead of switching to another sample.
+        """
         row = self.metadata.iloc[idx]
         file_name = row["file_name"]
         label_data = row["mapped_labels"] if self.multi_label else row["mapped_label"]
 
         video_path = os.path.join(self.video_root, f"{file_name}.mp4")
+
         video = self._load_video(video_path)
         audio = self._load_audio(video_path)
+
+        if video is None or audio is None:
+            print(f"[WARNING] Failed to load sample: {file_name}. Returning dummy tensors.")
+            dummy_video = torch.zeros((self.num_frames, 3, 224, 224))
+            dummy_audio = torch.zeros((1, 128, int(self.sample_rate * self.t_seconds / 160)))  # approx T = 100 * t
+            dummy_label = torch.zeros(len(self.label_to_index)) if self.multi_label else torch.tensor(0)
+            return {"video": dummy_video, "audio": dummy_audio, "labels": dummy_label}
 
         if self.multi_label:
             labels = ast.literal_eval(label_data)

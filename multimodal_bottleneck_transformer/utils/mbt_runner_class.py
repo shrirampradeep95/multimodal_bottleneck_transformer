@@ -2,6 +2,7 @@
 from utils.preprocessing.load_data import AVSubsetDataManager
 from utils.train_eval.trainer_evaluator import TrainerEvaluator
 from utils.model.multimodal_transformer import AVModel, AudioOnlyModel, VideoOnlyModel
+from utils.model_improved.mbt_improved import AVClassificationModel
 
 
 class MBTRunnerClass:
@@ -41,13 +42,22 @@ class MBTRunnerClass:
         print("[INFO] DataLoaders initialized.")
 
         if self.parameters['modality'] == 'av':
-            # Instantiate the AVModel with appropriate number of classes and bottlenecks
-            model = AVModel(
-                num_classes=len(manager.label_to_index),
-                num_bottlenecks=self.parameters['num_bottlenecks'],
-                transformer_layers=self.parameters['transformer_layers']
-            )
-            print("[INFO] AVModel instantiated with", len(manager.label_to_index), "classes.")
+            if self.parameters['model_improved']:
+                # Instantiate the AVModel with appropriate number of classes and bottlenecks
+                model = AVClassificationModel(
+                    num_classes=len(manager.label_to_index),
+                    num_latents=self.parameters['num_bottlenecks'],
+                    num_layers=self.parameters['transformer_layers']
+                )
+                print("[INFO] Improved AVModel instantiated with", len(manager.label_to_index), "classes.")
+            else:
+                # Instantiate the AVModel with appropriate number of classes and bottlenecks
+                model = AVModel(
+                    num_classes=len(manager.label_to_index),
+                    num_bottlenecks=self.parameters['num_bottlenecks'],
+                    transformer_layers=self.parameters['transformer_layers']
+                )
+                print("[INFO] AVModel instantiated with", len(manager.label_to_index), "classes.")
         elif self.parameters['modality'] == 'a':
             # Instantiate the AudioOnlyModel with appropriate number of classes
             model = AudioOnlyModel(
