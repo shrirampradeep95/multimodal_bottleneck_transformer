@@ -1,100 +1,75 @@
-🚀 Multimodal Bottleneck Transformer (MBT)
-Official PyTorch implementation of the paper
-📄 Attention Bottlenecks for Multimodal Fusion (NeurIPS 2021)
+# Multimodal Bottleneck Transformer (MBT)
 
-🎯 Overview
-This repository implements the Multimodal Bottleneck Transformer (MBT) from scratch, a transformer-based architecture that efficiently fuses audio and visual modalities using bottleneck tokens. This implementation supports:
+**Official PyTorch implementation of**  
+📄 _[Attention Bottlenecks for Multimodal Fusion (NeurIPS 2021)](https://arxiv.org/abs/2107.03908)_
 
-AudioSet and VGGSound datasets
+---
 
-AST for audio and ViT for video
+## Overview
 
-Bottleneck fusion across transformer layers
+This repository implements the **Multimodal Bottleneck Transformer (MBT)** from scratch. MBT is a transformer-based architecture that uses **bottleneck tokens** to efficiently fuse visual and audio information. Key features include:
 
-CLS token-based classification
+- Support for **AudioSet** and **VGGSound** datasets
+- Use of **AST** for audio encoding and **ViT** for video encoding
+- Bottleneck fusion blocks at each transformer layer
+- Classification using CLS token fusion
+- Fully modular, extensible, and dataset-agnostic
 
-Fully modular and extensible design
+---
 
-🔧 Architecture Overview
-The model is designed to process video frames and log-mel spectrograms using modality-specific encoders, followed by fusion through bottleneck attention:
+## 🔧 Architecture
 
-css
-Copy
-Edit
-          [Video Frames]     [Spectrograms]
-                ↓                  ↓
-           ViT Encoder         AST Encoder
-                ↓                  ↓
-        [RGB Tokens]         [Audio Tokens]
-                ↘              ↙
-        ↘   Bottleneck Tokens   ↙
-        →→→→→→ Fusion Layers →→→→→→
-                     ↓
-           [CLS Tokens from both]
-                     ↓
-             Linear Classifier
-Fusion happens via cross-attention to bottleneck tokens, which mediate the interaction between modalities while maintaining computational efficiency.
+The model processes **video frames** and **log-mel spectrograms** via separate transformer encoders. Bottleneck tokens mediate cross-modal attention:
 
-📁 Project Structure
-bash
-Copy
-Edit
-multimodal_bottleneck_transformer/
-├── utils/
-│   ├── model/
-│   │   ├── audio_model.py        # AST encoder
-│   │   ├── video_model.py        # ViT encoder
-│   │   └── bottleneck_fusion.py  # Bottleneck fusion blocks
-│   ├── preprocessing/
-│   │   └── video_data_preprocessing.py  # Audio-video loader
-│   └── train_eval/
-│       └── trainer_evaluator.py  # Training + evaluation logic
-├── mbt_runner_class.py           # Main class for training
-├── README.md                     # You're here
-🧠 Key Concepts
-Bottleneck Attention
-MBT reduces full attention complexity by introducing a small number of fusion tokens that attend to both modalities and relay relevant information.
+      [Video Frames]     [Spectrograms]
+            ↓                  ↓
+       ViT Encoder         AST Encoder
+            ↓                  ↓
+    [RGB Tokens]         [Audio Tokens]
+            ↘              ↙
+    ↘   Bottleneck Tokens   ↙
+    →→→→→→ Fusion Layers →→→→→→
+                 ↓
+       [CLS Tokens from both]
+                 ↓
+         Linear Classifier
 
-CLS Token Fusion
-We average the logits from the CLS token of both encoders for final classification.
 
-Positional Encoding & Patchification
-Audio: 128×100t spectrogram → 16×16 patches → 400 tokens
+---
 
-Video: 8 frames → 14×14 patches each → 1568 tokens
+## Core Concepts
 
-📦 Dependencies
-bash
-Copy
-Edit
+### Bottleneck Attention
+Instead of full cross-attention (quadratic cost), a small number of shared **bottleneck tokens** attend to both modalities to transfer relevant information.
+
+### CLS Token Fusion
+Final classification is done using a linear head on top of the **averaged logits** from audio and video CLS tokens.
+
+### 🔍 Positional Encoding & Patchification
+- **Video**: 8 frames at 25 FPS → 14×14 patches → 1568 tokens
+- **Audio**: t-second log-mel spectrogram → 400 tokens (16×16 patches)
+
+---
+
+## Requirements
+
+Install all dependencies using:
+
+```bash
 pip install -r requirements.txt
-Core packages:
 
-torch, timm
+**## Key Packages**
+torch — PyTorch deep learning framework
+timm — Pretrained Vision Transformers (used for ViT)
+einops — Tensor manipulation library (used for rearranging tokens)
+torchaudio — For audio I/O and spectrogram preprocessing
+opencv-python — For video frame extraction and processing
+scikit-learn — Evaluation metrics like average precision
+tqdm — Progress bar for training and data loading
+numpy, pandas — Standard scientific computing stack
 
-einops
+**## Loss Functions**
 
-torchaudio, opencv
+BCEWithLogitsLoss for AudioSet (multi-label classification)
+CrossEntropyLoss for VGGSound (single-label classification)
 
-scikit-learn, tqdm
-
-📊 Datasets Supported
-
-Dataset	Frames	Audio Length (t)	Tokens
-AudioSet	8	t seconds	400 spectrogram tokens
-VGGSound	8	t seconds	1568 image patch tokens
-Spectrogram: 16kHz mono audio → log-mel with 25ms window, 10ms hop
-
-RGB frames: Sampled at 25 FPS, resized to 224×224
-
-🏋️‍♂️ Training
-bash
-Copy
-Edit
-python mbt_runner_class.py
-Configure hyperparameters and dataset settings in your parameters dictionary or config file.
-
-✅ Evaluation
-AudioSet: Multi-label → BCEWithLogitsLoss, mAP
-
-VGGSound: Single-label → CrossEntropyLoss, Top-1 Accuracy
