@@ -58,17 +58,17 @@ Install all dependencies using:
 pip install -r requirements.txt
 
 **Key Packages**
-torch — PyTorch deep learning framework
-timm — Pretrained Vision Transformers (used for ViT)
-einops — Tensor manipulation library (used for rearranging tokens)
-torchaudio — For audio I/O and spectrogram preprocessing
-opencv-python — For video frame extraction and processing
-scikit-learn — Evaluation metrics like average precision
-tqdm — Progress bar for training and data loading
-numpy, pandas — Standard scientific computing stack
+- torch — PyTorch deep learning framework.
+- timm — Pretrained Vision Transformers (used for ViT)
+- einops — Tensor manipulation library (used for rearranging tokens)
+- torchaudio — For audio I/O and spectrogram preprocessing
+- opencv-python — For video frame extraction and processing
+- scikit-learn — Evaluation metrics like average precision
+- tqdm — Progress bar for training and data loading
+- numpy, pandas — Standard scientific computing stack
 
 ## **Loss Functions**
 
-BCEWithLogitsLoss for AudioSet (multi-label classification)
-CrossEntropyLoss for VGGSound (single-label classification)
+- BCEWithLogitsLoss for AudioSet (multi-label classification)
+- CrossEntropyLoss for VGGSound (single-label classification)
 
