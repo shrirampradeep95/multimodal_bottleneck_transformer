@@ -26,13 +26,14 @@ The model processes **video frames** and **log-mel spectrograms** via separate t
        ViT Encoder         AST Encoder
             ↓                  ↓
     [RGB Tokens]         [Audio Tokens]
-            ↘              ↙
-    ↘   Bottleneck Tokens   ↙
-    →→→→→→ Fusion Layers →→→→→→
-                 ↓
-       [CLS Tokens from both]
-                 ↓
-         Linear Classifier
+            ↘                  ↙
+             Bottleneck Tokens   
+                    ↓ 
+      →→→→→→ Fusion Layers →→→→→→
+                    ↓
+          [CLS Tokens from both]
+                    ↓
+            Linear Classifier
 
 
 ---
@@ -54,8 +55,6 @@ Final classification is done using a linear head on top of the **averaged logits
 ## Requirements
 
 Install all dependencies using:
-
-```bash
 pip install -r requirements.txt
 
 **Key Packages**
