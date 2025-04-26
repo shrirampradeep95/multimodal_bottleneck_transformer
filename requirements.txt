@@ -10,9 +10,5 @@ matplotlib>=3.5.0
 pandas
 numpy
 scipy
-# pip uninstall numpy -y
-# pip install "numpy<2.0.0" --force-reinstall
-
-# Optional: Reinstall PyTorch and Pandas to rebuild extensions with compatible NumPy
-# pip install --force-reinstall torch pandas scipy scikit-learn
-
+torch
+scikit-learn
